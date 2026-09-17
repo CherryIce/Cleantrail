@@ -6,7 +6,7 @@ import '../app/app_localizations.dart';
 import '../domain/data_project.dart';
 import '../state/workbench_controller.dart';
 
-class WorkbenchHome extends StatelessWidget {
+class WorkbenchHome extends StatefulWidget {
   const WorkbenchHome({
     required this.controller,
     required this.onLocaleChanged,
@@ -17,11 +17,24 @@ class WorkbenchHome extends StatelessWidget {
   final ValueChanged<Locale> onLocaleChanged;
 
   @override
+  State<WorkbenchHome> createState() => _WorkbenchHomeState();
+}
+
+class _WorkbenchHomeState extends State<WorkbenchHome> {
+  int section = 0;
+  String? lastProjectId;
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller,
+      animation: widget.controller,
       builder: (context, _) {
+        final controller = widget.controller;
         final project = controller.project;
+        if (project?.id != lastProjectId) {
+          lastProjectId = project?.id;
+          section = 0;
+        }
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 20,
@@ -39,28 +52,35 @@ class WorkbenchHome extends StatelessWidget {
               ],
             ),
             actions: [
-              TextButton(
-                onPressed: () => onLocaleChanged(
-                  context.s.isChinese ? const Locale('en') : const Locale('zh'),
-                ),
-                child: Text(context.s.get('language')),
-              ),
-              IconButton(
-                tooltip: context.s.get('privacy'),
-                onPressed: () => _showPrivacy(context),
-                icon: const Icon(Icons.privacy_tip_outlined),
-              ),
-              if (project != null)
-                PopupMenuButton<String>(
-                  tooltip: context.s.get('project'),
-                  onSelected: (value) async {
-                    if (value == 'new') {
+              PopupMenuButton<String>(
+                tooltip: context.s.get('moreOptions'),
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'language':
+                      widget.onLocaleChanged(
+                        context.s.isChinese
+                            ? const Locale('en')
+                            : const Locale('zh'),
+                      );
+                    case 'privacy':
+                      await _showPrivacy(context);
+                    case 'new':
                       await _confirmNewFile(context);
-                    } else if (value == 'remove' && context.mounted) {
+                    case 'remove':
                       await _confirmClear(context);
-                    }
-                  },
-                  itemBuilder: (context) => [
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'language',
+                    child: Text(context.s.get('language')),
+                  ),
+                  PopupMenuItem(
+                    value: 'privacy',
+                    child: Text(context.s.get('privacy')),
+                  ),
+                  if (project != null) ...[
+                    const PopupMenuDivider(),
                     PopupMenuItem(
                       value: 'new',
                       child: Text(context.s.get('newFile')),
@@ -70,12 +90,39 @@ class WorkbenchHome extends StatelessWidget {
                       child: Text(context.s.get('remove')),
                     ),
                   ],
-                ),
+                ],
+              ),
               const SizedBox(width: 8),
             ],
           ),
+          bottomNavigationBar: project == null
+              ? null
+              : NavigationBar(
+                  selectedIndex: section,
+                  onDestinationSelected: (index) {
+                    setState(() => section = index);
+                  },
+                  destinations: [
+                    NavigationDestination(
+                      icon: const Icon(Icons.fact_check_outlined),
+                      selectedIcon: const Icon(Icons.fact_check),
+                      label: context.s.get('reviewTab'),
+                    ),
+                    NavigationDestination(
+                      icon: const Icon(Icons.table_chart_outlined),
+                      selectedIcon: const Icon(Icons.table_chart),
+                      label: context.s.get('previewTab'),
+                    ),
+                    NavigationDestination(
+                      icon: const Icon(Icons.ios_share_outlined),
+                      selectedIcon: const Icon(Icons.ios_share),
+                      label: context.s.get('exportTab'),
+                    ),
+                  ],
+                ),
           body: SafeArea(
             top: false,
+            bottom: false,
             child: Column(
               children: [
                 if (controller.busy) const LinearProgressIndicator(),
@@ -97,7 +144,11 @@ class WorkbenchHome extends StatelessWidget {
                           onImport: controller.importCsv,
                           onSample: controller.loadSample,
                         )
-                      : _ProjectDashboard(controller: controller),
+                      : _ProjectDashboard(
+                          key: ValueKey(section),
+                          controller: controller,
+                          section: section,
+                        ),
                 ),
               ],
             ),
@@ -125,7 +176,7 @@ class WorkbenchHome extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) await controller.clear();
+    if (confirmed == true) await widget.controller.clear();
   }
 
   Future<void> _confirmNewFile(BuildContext context) async {
@@ -146,7 +197,7 @@ class WorkbenchHome extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) await controller.importCsv();
+    if (confirmed == true) await widget.controller.importCsv();
   }
 
   Future<void> _showPrivacy(BuildContext context) async {
@@ -236,7 +287,12 @@ class _EmptyWorkspace extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          28,
+          24,
+          36 + MediaQuery.paddingOf(context).bottom,
+        ),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 620),
           child: Column(
@@ -244,19 +300,30 @@ class _EmptyWorkspace extends StatelessWidget {
             children: [
               Text(
                 context.s.get('emptyTitle'),
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                   fontWeight: FontWeight.w800,
-                  height: 1.08,
+                  height: 1.15,
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               Text(
                 context.s.get('emptyBody'),
                 style: Theme.of(
                   context,
                 ).textTheme.bodyLarge?.copyWith(height: 1.55),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: busy ? null : onImport,
+                icon: const Icon(Icons.file_open_outlined),
+                label: Text(context.s.get('importCsv')),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: busy ? null : onSample,
+                child: Text(context.s.get('trySample')),
+              ),
+              const SizedBox(height: 24),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(22),
@@ -275,17 +342,6 @@ class _EmptyWorkspace extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: busy ? null : onImport,
-                icon: const Icon(Icons.file_open_outlined),
-                label: Text(context.s.get('importCsv')),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: busy ? null : onSample,
-                child: Text(context.s.get('trySample')),
               ),
               const SizedBox(height: 12),
               Text(
@@ -337,76 +393,117 @@ class _TrailStep extends StatelessWidget {
 }
 
 class _ProjectDashboard extends StatelessWidget {
-  const _ProjectDashboard({required this.controller});
+  const _ProjectDashboard({
+    required this.controller,
+    required this.section,
+    super.key,
+  });
 
   final WorkbenchController controller;
+  final int section;
 
   @override
   Widget build(BuildContext context) {
     final project = controller.project!;
+    final openIssues = project.openIssues;
     return CustomScrollView(
       key: const Key('project-dashboard'),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 42),
-          sliver: SliverList.list(
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 840),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _ProjectHeader(project: project),
-                      const SizedBox(height: 18),
-                      _ScoreCard(project: project),
-                      const SizedBox(height: 28),
-                      _SectionHeader(
-                        title: context.s.get('reviewQueue'),
-                        trailing: controller.canUndo
-                            ? TextButton.icon(
-                                onPressed: controller.undo,
-                                icon: const Icon(Icons.undo, size: 18),
-                                label: Text(context.s.get('undo')),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                      if (project.openIssues.isEmpty)
-                        _AllClearCard(project: project)
-                      else
-                        _IssueQueue(
-                          issues: project.openIssues,
+          padding: EdgeInsets.fromLTRB(
+            20,
+            18,
+            20,
+            42 + MediaQuery.paddingOf(context).bottom,
+          ),
+          sliver: section == 0
+              ? SliverList.builder(
+                  itemCount: 1 + math.max(1, openIssues.length),
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return _CenteredDashboardContent(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _ProjectHeader(project: project),
+                            const SizedBox(height: 16),
+                            _ScoreCard(project: project),
+                            const SizedBox(height: 24),
+                            _SectionHeader(
+                              title: context.s.get('reviewQueue'),
+                              trailing: controller.canUndo
+                                  ? TextButton.icon(
+                                      onPressed: controller.undo,
+                                      icon: const Icon(Icons.undo, size: 18),
+                                      label: Text(context.s.get('undo')),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                        ),
+                      );
+                    }
+                    if (openIssues.isEmpty) {
+                      return _CenteredDashboardContent(
+                        child: _AllClearCard(project: project),
+                      );
+                    }
+                    final issue = openIssues[index - 1];
+                    return _CenteredDashboardContent(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _IssueCard(
+                          issue: issue,
                           project: project,
-                          onTap: (issue) => _showIssue(context, issue),
-                        ),
-                      const SizedBox(height: 18),
-                      _SectionHeader(title: context.s.get('preview')),
-                      const SizedBox(height: 10),
-                      _NumericPreview(project: project),
-                      const SizedBox(height: 12),
-                      _TablePreview(project: project),
-                      const SizedBox(height: 28),
-                      _ExportCard(
-                        project: project,
-                        busy: controller.busy,
-                        onExport: (origin) => controller.export(
-                          chinese: context.s.isChinese,
-                          shareOrigin: origin,
+                          onTap: () => _showIssue(context, issue),
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      Text(
-                        context.s.get('offlineFooter'),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                    );
+                  },
+                )
+              : SliverToBoxAdapter(
+                  child: _CenteredDashboardContent(
+                    child: section == 1
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _PageHeading(
+                                title: context.s.get('preview'),
+                                fileName: project.fileName,
+                              ),
+                              const SizedBox(height: 18),
+                              _TablePreview(project: project),
+                              const SizedBox(height: 12),
+                              _NumericPreview(project: project),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _PageHeading(
+                                title: context.s.get('export'),
+                                fileName: project.fileName,
+                              ),
+                              const SizedBox(height: 18),
+                              _ExportCard(
+                                project: project,
+                                busy: controller.busy,
+                                onExport: (origin) => controller.export(
+                                  chinese: context.s.isChinese,
+                                  shareOrigin: origin,
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Text(
+                                context.s.get('offlineFooter'),
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
                   ),
                 ),
-              ),
-            ],
-          ),
         ),
       ],
     );
@@ -414,108 +511,174 @@ class _ProjectDashboard extends StatelessWidget {
 
   Future<void> _showIssue(BuildContext context, DataIssue issue) async {
     final project = controller.project!;
-    final input = TextEditingController(text: issue.suggestion ?? '');
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          22,
-          4,
-          22,
-          22 + MediaQuery.viewInsetsOf(sheetContext).bottom,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _issueTitle(sheetContext, issue.kind),
-                style: Theme.of(sheetContext).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(_issueBody(sheetContext, issue.kind)),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Chip(
-                    label: Text(
-                      '${sheetContext.s.get('row')} ${_rowNumber(issue)}',
-                    ),
-                  ),
-                  Chip(
-                    label: Text(
-                      issue.columnIndex == null
-                          ? '—'
-                          : _displayHeader(
-                              sheetContext,
-                              project,
-                              issue.columnIndex!,
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _ValueBlock(
-                label: sheetContext.s.get('original'),
-                value: issue.originalValue.isEmpty ? '—' : issue.originalValue,
-              ),
-              if (issue.kind != IssueKind.duplicateRow) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: input,
-                  autofocus: issue.suggestion == null,
-                  decoration: InputDecoration(
-                    labelText: issue.suggestion == null
-                        ? sheetContext.s.get('replacementHint')
-                        : sheetContext.s.get('suggested'),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () async {
-                  final navigator = Navigator.of(sheetContext);
-                  await controller.resolveIssue(
-                    issue.id,
-                    replacement: issue.kind == IssueKind.duplicateRow
-                        ? null
-                        : input.text,
-                  );
-                  if (sheetContext.mounted && controller.errorCode == null) {
-                    navigator.pop();
-                  }
-                },
-                child: Text(
-                  issue.kind == IssueKind.duplicateRow
-                      ? sheetContext.s.get('removeDuplicate')
-                      : issue.suggestion == null
-                      ? sheetContext.s.get('apply')
-                      : sheetContext.s.get('applySuggestion'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () async {
-                  final navigator = Navigator.of(sheetContext);
-                  await controller.resolveIssue(issue.id, ignore: true);
-                  if (sheetContext.mounted) navigator.pop();
-                },
-                child: Text(sheetContext.s.get('keepOriginal')),
+      builder: (_) =>
+          _IssueSheet(controller: controller, project: project, issue: issue),
+    );
+  }
+}
+
+class _CenteredDashboardContent extends StatelessWidget {
+  const _CenteredDashboardContent({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 840),
+      child: SizedBox(width: double.infinity, child: child),
+    ),
+  );
+}
+
+class _PageHeading extends StatelessWidget {
+  const _PageHeading({required this.title, required this.fileName});
+  final String title;
+  final String fileName;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 5),
+      Text(fileName, style: Theme.of(context).textTheme.bodyMedium),
+    ],
+  );
+}
+
+class _IssueSheet extends StatefulWidget {
+  const _IssueSheet({
+    required this.controller,
+    required this.project,
+    required this.issue,
+  });
+
+  final WorkbenchController controller;
+  final DataProject project;
+  final DataIssue issue;
+
+  @override
+  State<_IssueSheet> createState() => _IssueSheetState();
+}
+
+class _IssueSheetState extends State<_IssueSheet> {
+  late final TextEditingController input;
+
+  @override
+  void initState() {
+    super.initState();
+    input = TextEditingController(text: widget.issue.suggestion ?? '');
+  }
+
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext sheetContext) {
+    final controller = widget.controller;
+    final project = widget.project;
+    final issue = widget.issue;
+    return Padding(
+      key: const Key('issue-sheet-insets'),
+      padding: EdgeInsets.fromLTRB(
+        22,
+        4,
+        22,
+        22 +
+            math.max(
+              MediaQuery.paddingOf(sheetContext).bottom,
+              MediaQuery.viewInsetsOf(sheetContext).bottom,
+            ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _issueTitle(sheetContext, issue.kind),
+              style: Theme.of(
+                sheetContext,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            Text(_issueBody(sheetContext, issue.kind)),
+            const SizedBox(height: 18),
+            Text(
+              '${sheetContext.s.get('row')} ${_rowNumber(issue)}',
+              style: Theme.of(sheetContext).textTheme.labelLarge,
+            ),
+            if (issue.columnIndex != null) ...[
+              const SizedBox(height: 4),
+              SelectableText(
+                _displayHeader(sheetContext, project, issue.columnIndex!),
               ),
             ],
-          ),
+            const SizedBox(height: 12),
+            _ValueBlock(
+              label: sheetContext.s.get('original'),
+              value: issue.originalValue.isEmpty ? '—' : issue.originalValue,
+            ),
+            if (issue.kind != IssueKind.duplicateRow) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: input,
+                autofocus: issue.suggestion == null,
+                maxLines: null,
+                decoration: InputDecoration(
+                  labelText: issue.suggestion == null
+                      ? sheetContext.s.get('replacementHint')
+                      : sheetContext.s.get('suggested'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () async {
+                final navigator = Navigator.of(sheetContext);
+                await controller.resolveIssue(
+                  issue.id,
+                  replacement: issue.kind == IssueKind.duplicateRow
+                      ? null
+                      : input.text,
+                );
+                if (sheetContext.mounted && controller.errorCode == null) {
+                  navigator.pop();
+                }
+              },
+              child: Text(
+                issue.kind == IssueKind.duplicateRow
+                    ? sheetContext.s.get('removeDuplicate')
+                    : issue.suggestion == null
+                    ? sheetContext.s.get('apply')
+                    : sheetContext.s.get('applySuggestion'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () async {
+                final navigator = Navigator.of(sheetContext);
+                await controller.resolveIssue(issue.id, ignore: true);
+                if (sheetContext.mounted) navigator.pop();
+              },
+              child: Text(sheetContext.s.get('keepOriginal')),
+            ),
+          ],
         ),
       ),
     );
-    input.dispose();
   }
 }
 
@@ -539,20 +702,46 @@ class _ProjectHeader extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           project.fileName,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          '${project.records.length} ${context.s.get('rows')} · '
-          '${project.headers.length} ${context.s.get('columns')} · '
-          '${project.openIssues.length} ${context.s.get('openIssues')}',
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: [
+            _MetricPill(
+              label: '${project.records.length} ${context.s.get('rows')}',
+            ),
+            _MetricPill(
+              label: '${project.headers.length} ${context.s.get('columns')}',
+            ),
+            _MetricPill(
+              label:
+                  '${project.openIssues.length} ${context.s.get('openIssues')}',
+            ),
+          ],
         ),
       ],
     );
   }
+}
+
+class _MetricPill extends StatelessWidget {
+  const _MetricPill({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+  );
 }
 
 class _ScoreCard extends StatelessWidget {
@@ -564,55 +753,53 @@ class _ScoreCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                Text(
+                  '${project.qualityScore}',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: colors.primary,
+                  ),
+                ),
+                Text(
+                  context.s.get('qualityScore'),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Semantics(
               label: '${context.s.get('qualityScore')} ${project.qualityScore}',
-              child: SizedBox(
-                width: 86,
-                height: 86,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      value: project.qualityScore / 100,
-                      strokeWidth: 9,
-                      backgroundColor: colors.surfaceContainerHighest,
-                    ),
-                    Text(
-                      '${project.qualityScore}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
+              child: LinearProgressIndicator(
+                value: project.qualityScore / 100,
+                minHeight: 7,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: colors.surfaceContainerHighest,
               ),
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.s.get('qualityScore'),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${project.fixedCount} ${context.s.get('fixed')} · '
-                    '${project.ignoredCount} ${context.s.get('kept')}',
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    context.s.get('sourceProtected'),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                Text('${project.fixedCount} ${context.s.get('fixed')}'),
+                Text('${project.ignoredCount} ${context.s.get('kept')}'),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              context.s.get('sourceProtected'),
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
@@ -661,12 +848,13 @@ class _IssueCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: colors.secondaryContainer,
                   borderRadius: BorderRadius.circular(13),
@@ -676,62 +864,40 @@ class _IssueCard extends StatelessWidget {
                   color: colors.onSecondaryContainer,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       _issueTitle(context, issue.kind),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
-                      '${context.s.get('row')} ${_rowNumber(issue)} · '
-                      '${issue.columnIndex == null ? '—' : _displayHeader(context, project, issue.columnIndex!)}',
-                      overflow: TextOverflow.ellipsis,
+                      '${context.s.get('row')} ${_rowNumber(issue)}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
+                    if (issue.columnIndex != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        _displayHeader(context, project, issue.columnIndex!),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 20),
             ],
           ),
         ),
       ),
     );
   }
-}
-
-class _IssueQueue extends StatelessWidget {
-  const _IssueQueue({
-    required this.issues,
-    required this.project,
-    required this.onTap,
-  });
-
-  final List<DataIssue> issues;
-  final DataProject project;
-  final ValueChanged<DataIssue> onTap;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: math.min(600, math.max(94, issues.length * 86)).toDouble(),
-    child: ListView.separated(
-      primary: false,
-      itemCount: issues.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final issue = issues[index];
-        return _IssueCard(
-          issue: issue,
-          project: project,
-          onTap: () => onTap(issue),
-        );
-      },
-    ),
-  );
 }
 
 class _AllClearCard extends StatelessWidget {
@@ -812,46 +978,95 @@ class _TablePreview extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.only(top: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                rangeLabel,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.all(8),
-                child: DataTable(
-                  columns: List.generate(
-                    project.headers.length,
-                    (index) => DataColumn(
-                      label: Text(_displayHeader(context, project, index)),
-                    ),
-                  ),
-                  rows: project.records.take(5).map((row) {
-                    return DataRow(
-                      cells: row.values
-                          .map(
-                            (value) =>
-                                DataCell(Text(value.isEmpty ? '—' : value)),
-                          )
-                          .toList(),
-                    );
-                  }).toList(),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  rangeLabel,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              if (constraints.maxWidth < 600)
+                ...List.generate(
+                  shown,
+                  (index) => _RecordPreviewRow(project: project, index: index),
+                )
+              else
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.all(8),
+                    child: DataTable(
+                      columns: List.generate(
+                        project.headers.length,
+                        (index) => DataColumn(
+                          label: Text(_displayHeader(context, project, index)),
+                        ),
+                      ),
+                      rows: project.records.take(5).map((row) {
+                        return DataRow(
+                          cells: row.values
+                              .map(
+                                (value) =>
+                                    DataCell(Text(value.isEmpty ? '—' : value)),
+                              )
+                              .toList(),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _RecordPreviewRow extends StatelessWidget {
+  const _RecordPreviewRow({required this.project, required this.index});
+  final DataProject project;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+    key: ValueKey('preview-row-$index'),
+    initiallyExpanded: index == 0,
+    title: Text('${context.s.get('row')} ${index + 1}'),
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: List.generate(project.headers.length, (column) {
+            final value = project.records[index].values[column];
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _displayHeader(context, project, column),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  SelectableText(value.isEmpty ? '—' : value),
+                ],
+              ),
+            );
+          }),
+        ),
+      ),
+    ],
+  );
 }
 
 class _NumericPreview extends StatelessWidget {
@@ -986,13 +1201,6 @@ class _ExportCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            context.s.get('export'),
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
           Text(context.s.get('exportNote')),
           if (project.openIssues.isNotEmpty) ...[
             const SizedBox(height: 8),
